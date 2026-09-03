@@ -1,11 +1,19 @@
 {
     "name": "nativeui/native-wheel-datepicker",
-    "description": "A dark, iOS-style wheel date picker as a genuine native EDGE component for NativePHP Mobile v4 (SwiftUI + Jetpack Compose, no web view).",
+    "description": "A wheel date picker EDGE component for NativePHP Mobile v4 (SwiftUI + Jetpack Compose).",
     "type": "nativephp-plugin",
     "license": "MIT",
-    "keywords": ["nativephp", "nativephp-plugin", "edge", "wheel-picker", "date-picker"],
+    "keywords": [
+        "nativephp",
+        "nativephp-plugin",
+        "edge",
+        "wheel-picker",
+        "date-picker"
+    ],
     "require": {
-        "php": "^8.2"
+        "php": "^8.2",
+        "nativephp/mobile": "^4.0",
+        "nativephp/mobile-ui": "^0.3"
     },
     "autoload": {
         "psr-4": {
@@ -22,6 +30,12 @@
             "providers": [
                 "NativeUI\\WheelDatePicker\\WheelDatePickerServiceProvider"
             ]
+        },
+        "nativephp": {
+            "manifest": "nativephp.json"
+        },
+        "branch-alias": {
+            "dev-main": "0.1.x-dev"
         }
     },
     "minimum-stability": "dev",

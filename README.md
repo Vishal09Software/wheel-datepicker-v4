@@ -1,77 +1,110 @@
 # nativeui/native-wheel-datepicker
 
-A dark, iOS-style wheel date picker as a genuine **native EDGE component** for
-**NativePHP Mobile v4** — rendered by real SwiftUI (`Picker(.wheel)`) on iOS and
-a hand-rolled snapping wheel in Jetpack Compose on Android. No web view, no
-HTML/CSS/JS: it's a `<native:wheel-date-picker>` tag backed by native code,
-built the same way NativePHP's own `nativephp/mobile-ui` components are.
+A wheel date picker **EDGE component** for [NativePHP Mobile v4](https://nativephp.com/docs/mobile/4). It renders as real SwiftUI (`Picker(.wheel)`) on iOS and a snapping Compose wheel on Android — not a web view.
 
-This is a **UI Component Plugin**, not a nested/composed component — a wheel
-picker doesn't exist in EDGE's built-in element set, so it needs its own
-Swift `View` and Kotlin `@Composable`, wired up via `nativephp.json`.
-
-## How this differs from a webview picker
-
-| | Webview version | This plugin |
-|---|---|---|
-| Renders via | HTML/CSS/JS in a `<webview>` | Native SwiftUI / Jetpack Compose |
-| Ships as | Plain Composer package (`Blade::component()`) | NativePHP **plugin** (`type: nativephp-plugin`) |
-| Needs a build step | No | **Yes** — native code is compiled in at `php artisan native:run` |
-| Wheel scrolling | JS scroll-snap | `Picker(.wheel)` (iOS) / snap-fling `LazyColumn` (Android) |
+Requires NativePHP Mobile **v4** and `nativephp/mobile-ui`.
 
 ## Install
 
-1. Copy this folder into your NativePHP app, e.g. `packages/nativeui/native-wheel-datepicker`.
-2. In your app's root `composer.json`:
-   ```json
-   "repositories": [
-       { "type": "path", "url": "packages/nativeui/native-wheel-datepicker" }
-   ]
-   ```
-3. Require it and register it as a plugin:
-   ```bash
-   composer require nativeui/native-wheel-datepicker:@dev
-   php artisan native:plugin:register nativeui/native-wheel-datepicker
-   php artisan native:plugin:validate
-   ```
-4. Rebuild the native projects so the Swift/Kotlin renderers get compiled in
-   (adding a component to the manifest and only restarting PHP renders nothing):
-   ```bash
-   php artisan native:run
-   ```
-   If you're iterating on the native code itself, you may need a fresh install
-   of the native projects per NativePHP's plugin docs.
+Composer require is not enough. Register the plugin, then rebuild so Kotlin/Swift are compiled in.
+
+### From GitHub (before Packagist)
+
+1. Push this folder as its own Git repository and tag a version (`v0.1.0`).
+2. In the **app** `composer.json`:
+
+```json
+{
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/YOUR_USER/native-wheel-datepicker"
+        }
+    ]
+}
+```
+
+3. Then:
+
+```bash
+composer require nativeui/native-wheel-datepicker:^0.1
+php artisan vendor:publish --tag=nativephp-plugins-provider
+php artisan native:plugin:register nativeui/native-wheel-datepicker
+php artisan native:plugin:validate
+php artisan native:plugin:list
+```
+
+4. Rebuild the native app (`ios` or `android`):
+
+```bash
+php artisan native:run ios
+# or
+php artisan native:run android
+```
+
+PHP-only changes hot-reload. Native renderer changes need `native:run` again. Manifest/native path changes may need `php artisan native:install --force`.
+
+### From Packagist
+
+After you submit the GitHub repo to [Packagist](https://packagist.org), drop the `repositories` entry and run:
+
+```bash
+composer require nativeui/native-wheel-datepicker
+```
+
+Then register and rebuild as above.
+
+### Local path (plugin development)
+
+```json
+{
+    "repositories": [
+        { "type": "path", "url": "packages/nativeui/native-wheel-datepicker" }
+    ]
+}
+```
+
+```bash
+composer require nativeui/native-wheel-datepicker:@dev
+```
 
 ## Usage
 
 ```blade
 <native:wheel-date-picker
-    value="{{ $birthday }}"
+    native:model="birthday"
+    label="Birthday"
     title="Select date"
-    _done="onBirthdaySelected"
+    format="Y-m-d"
+    picker-style="compact"
+    confirm-label="Done"
+    a11y-label="Birthday"
 />
 ```
 
 ```php
+use Native\Mobile\Edge\NativeComponent;
+
 class ProfileScreen extends NativeComponent
 {
     public string $birthday = '2026-07-16';
 
-    public function onBirthdaySelected(string $value): void
+    public function render()
     {
-        $this->birthday = $value; // "2026-07-16"
+        return view('native.profile');
     }
 }
 ```
 
+`native:model` commits when the user taps **Done** (compact) or when you use the footer on inline. Use plain `native:model` or `native:model.live` — `.blur` / `.debounce` are rejected.
+
 ### Events
 
-- `_change="method"` — fires on every wheel settle (day/month/year, or the
-  month-header prev/next arrows), with the ISO `Y-m-d` value.
-- `_done="method"` — fires when the user taps **Done**.
-- `_cancel="method"` — fires when the user taps **Cancel**.
+- `_change="method"` — wheel settle (optional; `native:model` already syncs).
+- `_done="method"` — **Done**.
+- `_cancel="method"` — **Cancel**.
 
-All three receive a single `string $value` argument (ISO date).
+Each handler receives a `string $value` in the picker’s `format` (default `Y-m-d`).
 
 ### Year range
 
@@ -79,34 +112,44 @@ All three receive a single `string $value` argument (ISO date).
 <native:wheel-date-picker year-start="2020" year-end="2035" />
 ```
 
-Falls back to `config('wheel-datepicker.year_start')` / `year_end` (default
-1990 → current year + 20) when omitted.
+Defaults: `config('wheel-datepicker.year_start')` (1990) through current year + 20.
 
-### Hide the footer
+### Format
 
-```blade
-<native:wheel-date-picker :show-footer="false" />
-```
-
-Useful if you're driving Today/Cancel/Done from your own `<native:button>`s
-around the picker instead.
+PHP `date()` tokens (`Y-m-d`) or aliases: `YYYY-MM-DD`, `DD-MM-YYYY`, `MM-DD-YYYY`, and `/` or `.` variants.
 
 ### Colors
+
+Omitted keys use `config('wheel-datepicker.theme')`, then `config/native-ui.php` light tokens (`surface`, `outline`, `primary`, …).
 
 ```blade
 <native:wheel-date-picker
     :colors="[
-        'bg' => '#1a1025',
-        'card' => '#241735',
-        'accent' => '#c084fc',
+        'card' => '#FFFFFF',
+        'accent' => '#2563EB',
     ]"
 />
 ```
 
-Available keys: `bg`, `card`, `border`, `text`, `muted`, `muted_2`, `accent`.
-Omitted keys fall back to `config('wheel-datepicker.theme')`, which itself
-falls back to the built-in dark theme. Set the theme array once in
-`config/wheel-datepicker.php` to skin every picker in your app.
+Keys: `bg`, `card`, `border`, `text`, `muted`, `muted_2`, `accent`.
+
+### Size
+
+Values are density-independent (`dp` / `pt`). They do **not** auto-grow on tablets.
+
+```blade
+<native:wheel-date-picker
+    :row-height="44"
+    :visible-items="5"
+    :card-padding="16"
+/>
+```
+
+`visible-items` is clamped to **3, 5, or 7**. `wheel-height` defaults to `row-height × visible-items`.
+
+`:size="['row_height' => 52, 'visible_items' => 7]"` also works. Per-attribute props override `:size`, which overrides config.
+
+`class="w-full"` only stretches the **trigger field**.
 
 ## Config
 
@@ -114,60 +157,33 @@ falls back to the built-in dark theme. Set the theme array once in
 php artisan vendor:publish --tag=wheel-datepicker-config
 ```
 
-```php
-// config/wheel-datepicker.php
-return [
-    'year_start' => 1990,
-    'year_end' => now()->year + 20,
-    'theme' => [
-        'bg' => '#0e1324',
-        'accent' => '#7c9bff',
-        // ...
-    ],
-];
+Leave `theme` keys `null` to inherit Native UI. Set hex values only to override.
+
+## JavaScript / web view
+
+This plugin has **no bridge API**. Do not import it from Vue/React. Use the EDGE tag in a `NativeComponent`.
+
+## Tests
+
+Pest examples live in `tests/` and are meant to run inside a NativePHP Laravel app (`Native::test()`).
+
+## Publish this folder to Git
+
+From **this directory** (not the host app):
+
+```bash
+git init
+git add .
+git commit -m "Initial NativePHP wheel date picker plugin"
+git branch -M main
+git remote add origin https://github.com/YOUR_USER/native-wheel-datepicker.git
+git push -u origin main
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
-## Package layout
+Use a Composer package name you own on Packagist. If `nativeui/` is taken, change `"name"` in `composer.json` **before** the first public tag, then `composer require` that name.
 
-```
-native-wheel-datepicker/
-├── composer.json                          # type: "nativephp-plugin"
-├── nativephp.json                         # manifest — declares the `wheel_date_picker` component
-├── config/wheel-datepicker.php
-├── src/
-│   ├── WheelDatePickerServiceProvider.php
-│   ├── Elements/WheelDatePicker.php       # PHP element — props → wire node
-│   └── Components/WheelDatePicker.php     # Blade component — tag → element
-├── resources/
-│   ├── android/WheelDatePickerRenderer.kt # Compose renderer
-│   └── ios/WheelDatePickerRenderer.swift  # SwiftUI renderer
-└── tests/
-    ├── WheelDatePickerTest.php
-    └── Fixtures/
-```
+## License
 
-## A note on accuracy
-
-This was built directly from NativePHP v4's published **UI Component Plugin**
-architecture (Element → Blade component → Kotlin renderer → Swift renderer,
-wired through `nativephp.json`), matching the shape of the scaffold
-`php artisan native:plugin:create` generates. The PHP half (`Element`,
-`CallbackRegistry`, Blade component, testing via `Native::test()`) follows the
-documented API closely.
-
-The **native renderer bodies** (the actual Compose/SwiftUI layout code) are
-original implementations written for this picker — they aren't copied from
-NativePHP's source, since that isn't public. The typed prop accessors used
-(`getString`, `getInt`, `getBool`, `getColor`, `getCallbackId`) and the event
-bridge calls (`NativeUIBridge.sendTextChangeEvent`, `NativeElementBridge.sendTextChangeEvent`)
-are used exactly as shown in NativePHP's docs, but I haven't compiled this
-against the actual SDK. Before shipping:
-
-1. Run `php artisan native:plugin:validate`.
-2. Run `php artisan native:run` and open both platforms — check that
-   `getColor`'s exact signature (e.g. its default-value type) matches what
-   your installed `nativephp/mobile-air` version expects, and adjust the two
-   renderer files if the compiler flags a mismatch.
-3. Confirm `NativeComponent` and `Native\Mobile\Edge\NativeComponent` are the
-   correct namespaces for your installed version — these moved around during
-   the v4 betas.
+MIT

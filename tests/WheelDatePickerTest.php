@@ -1,5 +1,6 @@
 <?php
 
+use Native\Mobile\Edge\TailwindParser;
 use Native\Mobile\Testing\Native;
 use NativeUI\WheelDatePicker\Tests\Fixtures\WheelDatePickerScreen;
 
@@ -26,3 +27,26 @@ it('registers the done callback so it resolves to an integer id', function () {
             return is_int($node['props']['on_done']);
         });
 });
+
+it('serializes density-independent size defaults from config', function () {
+    Native::test(WheelDatePickerScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            $props = $node['props'];
+
+            return $props['row_height'] === 44
+                && $props['visible_items'] === 5
+                && $props['wheel_height'] === 220;
+        });
+});
+
+it('inherits Native UI theme colours when plugin theme keys are empty', function () {
+    Native::test(WheelDatePickerScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            $props = $node['props'];
+            $theme = config('native-ui.theme.light');
+
+            return $props['color_card'] === TailwindParser::resolveColorValue($theme['surface'])
+                && $props['color_accent'] === TailwindParser::resolveColorValue($theme['primary']);
+        });
+});
+

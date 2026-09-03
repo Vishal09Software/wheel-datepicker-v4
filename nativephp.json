@@ -1,5 +1,9 @@
 {
     "namespace": "WheelDatePicker",
+    "platforms": [
+        "android",
+        "ios"
+    ],
     "components": [
         {
             "type": "wheel_date_picker",
@@ -9,5 +13,11 @@
             "ios_renderer": "WheelDatePickerRenderer",
             "self_closing": true
         }
-    ]
+    ],
+    "android": {
+        "min_version": 26
+    },
+    "ios": {
+        "min_version": "18.2"
+    }
 }
