@@ -21,6 +21,12 @@ class WheelDatePicker extends Element
 
     public const VISIBLE_ITEM_COUNTS = [3, 5, 7];
 
+    public const REJECTED_SYNC_DIRECTIVES = [
+        'blur' => '`native:model.blur`',
+        'lazy' => '`native:model.lazy`',
+        'debounce' => '`native:model.debounce.Xms`',
+    ];
+
     public const FORMAT_ALIASES = [
         'YYYY-MM-DD' => 'Y-m-d',
         'DD-MM-YYYY' => 'd-m-Y',
@@ -144,12 +150,10 @@ class WheelDatePicker extends Element
     public function syncMode(string $mode): static
     {
         if ($mode !== 'live') {
-            $directives = $mode === 'blur'
-                ? '`native:model.blur` / `native:model.lazy`'
-                : '`native:model.debounce.Xms`';
+            $directive = self::REJECTED_SYNC_DIRECTIVES[$mode] ?? "`native:model.{$mode}`";
 
             throw new InvalidArgumentException(
-                "WheelDatePicker commits on confirmation, so the `{$mode}` sync mode ({$directives}) has no effect. "
+                "WheelDatePicker commits on confirmation, so the {$directive} sync mode has no effect. "
                 .'Use plain `native:model` (or `native:model.live`).'
             );
         }
@@ -365,6 +369,14 @@ class WheelDatePicker extends Element
 
         $props['year_start'] ??= (int) config('wheel-datepicker.year_start', 1990);
         $props['year_end'] ??= (int) (config('wheel-datepicker.year_end') ?: now()->year + 20);
+
+        // Renderers (Android especially) assume year_start <= year_end and will
+        // crash or render inconsistently otherwise. Normalize once here so both
+        // native platforms always receive a valid, non-empty, ascending range.
+        if ($props['year_start'] > $props['year_end']) {
+            [$props['year_start'], $props['year_end']] = [$props['year_end'], $props['year_start']];
+        }
+
         $props['picker_style'] ??= 'compact';
         $props['format'] ??= $this->phpFormat((string) config('wheel-datepicker.format', 'Y-m-d'));
         $props['pattern'] = $this->nativePattern($props['format']);

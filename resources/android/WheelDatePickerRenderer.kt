@@ -275,7 +275,13 @@ object WheelDatePickerRenderer {
         onCancel: () -> Unit,
         onDone: () -> Unit,
     ) {
-        val years = remember(yearStart, yearEnd) { (yearStart..yearEnd).toList() }
+        // Defensive: the PHP element normalizes year_start <= year_end before this
+        // ever reaches the renderer, but native props can be forged/mocked in tests
+        // or by future callers, so never let this list end up empty — an empty
+        // years list makes selectedIndex.coerceIn(0, items.lastIndex) throw below.
+        val safeYearStart = minOf(yearStart, yearEnd)
+        val safeYearEnd = maxOf(yearStart, yearEnd)
+        val years = remember(safeYearStart, safeYearEnd) { (safeYearStart..safeYearEnd).toList() }
         val months = remember {
             (1..12).map {
                 LocalDate.of(2000, it, 1).format(DateTimeFormatter.ofPattern("MMM")).uppercase()
@@ -390,7 +396,7 @@ object WheelDatePickerRenderer {
                         modifier = Modifier.weight(1f),
                         items = years.map { it.toString() },
                         listState = yearListState,
-                        selectedIndex = years.indexOf(selectedDate.year).coerceAtLeast(0),
+                        selectedIndex = yearIndex(years, selectedDate.year),
                         size = size,
                         selectedColor = accent,
                         mutedColor = muted,
@@ -425,7 +431,7 @@ object WheelDatePickerRenderer {
                             scope.launch {
                                 dayListState.scrollToItem((today.dayOfMonth - 1).coerceAtLeast(0))
                                 monthListState.scrollToItem(today.monthValue - 1)
-                                yearListState.scrollToItem(years.indexOf(today.year).coerceAtLeast(0))
+                                yearListState.scrollToItem(yearIndex(years, today.year))
                             }
                         }
                     )
@@ -511,6 +517,23 @@ object WheelDatePickerRenderer {
                 }
             }
         }
+    }
+
+    /**
+     * Index of [year] within [years], clamped to the nearest boundary instead of
+     * jumping to index 0 when the current value's year falls outside the
+     * configured [year-start, year-end] window (e.g. a saved value predates a
+     * later-narrowed range).
+     */
+    private fun yearIndex(years: List<Int>, year: Int): Int {
+        if (years.isEmpty()) {
+            return 0
+        }
+        val index = years.indexOf(year)
+        if (index != -1) {
+            return index
+        }
+        return if (year < years.first()) 0 else years.lastIndex
     }
 
     private fun centeredIndex(state: LazyListState, lastIndex: Int): Int {

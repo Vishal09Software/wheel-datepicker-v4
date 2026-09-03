@@ -189,7 +189,11 @@ struct WheelDatePickerRenderer: View {
         onDone: @escaping () -> Void
     ) -> some View {
         let calendar = Self.calendar
-        let years = yearStart <= yearEnd ? Array(yearStart...yearEnd) : [yearStart]
+        // Defensive: the PHP element normalizes year_start <= year_end before this
+        // ever reaches the renderer, but native props can be forged/mocked (e.g.
+        // in tests), so guard against a reversed range producing an inverted or
+        // single-year list instead of the intended span.
+        let years = Array(min(yearStart, yearEnd)...max(yearStart, yearEnd))
         let months = calendar.shortMonthSymbols.map { $0.uppercased() }
         let dayCount = calendar.range(of: .day, in: .month, for: draftDate)?.count ?? 31
 

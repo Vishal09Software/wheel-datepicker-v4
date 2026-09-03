@@ -2,6 +2,12 @@
 
 use Native\Mobile\Edge\TailwindParser;
 use Native\Mobile\Testing\Native;
+use NativeUI\WheelDatePicker\Elements\WheelDatePicker;
+use NativeUI\WheelDatePicker\Tests\Fixtures\AllCallbacksScreen;
+use NativeUI\WheelDatePicker\Tests\Fixtures\ClampedSizeScreen;
+use NativeUI\WheelDatePicker\Tests\Fixtures\FormatAliasScreen;
+use NativeUI\WheelDatePicker\Tests\Fixtures\InvalidPickerStyleScreen;
+use NativeUI\WheelDatePicker\Tests\Fixtures\ReversedYearRangeScreen;
 use NativeUI\WheelDatePicker\Tests\Fixtures\WheelDatePickerScreen;
 
 beforeEach(function () {
@@ -48,5 +54,72 @@ it('inherits Native UI theme colours when plugin theme keys are empty', function
             return $props['color_card'] === TailwindParser::resolveColorValue($theme['surface'])
                 && $props['color_accent'] === TailwindParser::resolveColorValue($theme['primary']);
         });
+});
+
+it('normalizes a reversed year range instead of shipping it to native renderers', function () {
+    // Regression test: Android's wheel renderer crashes with
+    // IllegalArgumentException when year_start > year_end produces an empty
+    // year list. The element must swap the values so year_start <= year_end
+    // always holds, whatever order the attributes were written in.
+    Native::test(ReversedYearRangeScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            $props = $node['props'];
+
+            return $props['year_start'] === 2020
+                && $props['year_end'] === 2035
+                && $props['year_start'] <= $props['year_end'];
+        });
+});
+
+it('throws for an invalid picker-style value', function () {
+    Native::test(InvalidPickerStyleScreen::class);
+})->throws(InvalidArgumentException::class, 'picker-style` must be one of [compact, inline]');
+
+it('clamps size props to their documented bounds', function () {
+    Native::test(ClampedSizeScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            $props = $node['props'];
+
+            return $props['visible_items'] === 7   // 9 clamps down to the nearest allowed value
+                && $props['row_height'] === 80      // 500 clamps to the max
+                && $props['selected_font'] === 32   // 100 clamps to the max
+                && $props['muted_font'] === 10       // 1 clamps to the min
+                && $props['card_padding'] === 48;    // 999 clamps to the max
+        });
+});
+
+it('registers change, done, and cancel callbacks as integer ids', function () {
+    Native::test(AllCallbacksScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            $props = $node['props'];
+
+            return is_int($props['on_change'])
+                && is_int($props['on_done'])
+                && is_int($props['on_cancel']);
+        });
+});
+
+it('resolves a human-friendly format alias to its PHP date() equivalent and native pattern', function () {
+    Native::test(FormatAliasScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            $props = $node['props'];
+
+            return $props['format'] === 'd-m-Y'
+                && $props['pattern'] === 'dd-MM-yyyy'
+                && $props['value'] === '16-07-2026';
+        });
+});
+
+it('rejects sync modes other than live with a directive-specific message', function () {
+    expect(fn () => WheelDatePicker::make()->syncMode('blur'))
+        ->toThrow(InvalidArgumentException::class, 'native:model.blur` sync mode');
+
+    expect(fn () => WheelDatePicker::make()->syncMode('lazy'))
+        ->toThrow(InvalidArgumentException::class, 'native:model.lazy` sync mode');
+
+    expect(fn () => WheelDatePicker::make()->syncMode('debounce'))
+        ->toThrow(InvalidArgumentException::class, 'native:model.debounce.Xms` sync mode');
+
+    expect(WheelDatePicker::make()->syncMode('live'))->toBeInstanceOf(WheelDatePicker::class);
 });
 
