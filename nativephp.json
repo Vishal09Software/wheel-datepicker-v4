@@ -1,0 +1,13 @@
+{
+    "namespace": "WheelDatePicker",
+    "components": [
+        {
+            "type": "wheel_date_picker",
+            "element": "NativeUI\\WheelDatePicker\\Elements\\WheelDatePicker",
+            "blade": "NativeUI\\WheelDatePicker\\Components\\WheelDatePicker",
+            "android_renderer": "com.nativeui.plugins.wheeldatepicker.ui.WheelDatePickerRenderer",
+            "ios_renderer": "WheelDatePickerRenderer",
+            "self_closing": true
+        }
+    ]
+}
