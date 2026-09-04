@@ -1,4 +1,4 @@
-package com.nativeui.plugins.wheeldatepicker.ui
+package com.laratribe.plugins.wheeldatepicker.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -52,6 +52,7 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Compact trigger field + wheel dialog. Day 31 stays selected because
@@ -91,6 +92,11 @@ object WheelDatePickerRenderer {
         val cancelLabel = p.getString("cancel_label", "Cancel")
         val yearStart = p.getInt("year_start", 1990)
         val yearEnd = p.getInt("year_end", LocalDate.now().year + 20)
+        val minDate = p.getString("min_date").let { if (it.isEmpty()) null else parseDate(it, pattern) }
+        val maxDate = p.getString("max_date").let { if (it.isEmpty()) null else parseDate(it, pattern) }
+        val displayLocale = p.getString("locale").let {
+            if (it.isEmpty()) Locale.getDefault() else runCatching { Locale.forLanguageTag(it) }.getOrDefault(Locale.getDefault())
+        }
         val showFooter = p.getBool("show_footer", pickerStyle == "inline")
         val a11yLabel = p.getString("a11y_label").ifEmpty { label.ifEmpty { title } }
         val compact = pickerStyle != "inline"
@@ -197,6 +203,9 @@ object WheelDatePickerRenderer {
                     selectedDate = draftDate,
                     yearStart = yearStart,
                     yearEnd = yearEnd,
+                    minDate = minDate,
+                    maxDate = maxDate,
+                    locale = displayLocale,
                     showFooter = showFooter,
                     confirmLabel = confirmLabel,
                     cancelLabel = cancelLabel,
@@ -206,8 +215,8 @@ object WheelDatePickerRenderer {
                     text = dialogText,
                     muted = dialogMuted,
                     accent = dialogAccent,
-                    onDateChange = { draftDate = it },
-                    onToday = { draftDate = LocalDate.now() },
+                    onDateChange = { draftDate = clampToRange(it, minDate, maxDate) },
+                    onToday = { draftDate = clampToRange(LocalDate.now(), minDate, maxDate) },
                     onCancel = { emit(onCancelCb, draftDate, force = true) },
                     onDone = {
                         emit(onChangeCb, draftDate, force = true)
@@ -224,6 +233,9 @@ object WheelDatePickerRenderer {
                     selectedDate = draftDate,
                     yearStart = yearStart,
                     yearEnd = yearEnd,
+                    minDate = minDate,
+                    maxDate = maxDate,
+                    locale = displayLocale,
                     showFooter = true,
                     confirmLabel = confirmLabel,
                     cancelLabel = cancelLabel,
@@ -233,8 +245,8 @@ object WheelDatePickerRenderer {
                     text = dialogText,
                     muted = dialogMuted,
                     accent = dialogAccent,
-                    onDateChange = { draftDate = it },
-                    onToday = { draftDate = LocalDate.now() },
+                    onDateChange = { draftDate = clampToRange(it, minDate, maxDate) },
+                    onToday = { draftDate = clampToRange(LocalDate.now(), minDate, maxDate) },
                     onCancel = {
                         showDialog = false
                         draftDate = parseDate(committed, pattern)
@@ -254,6 +266,14 @@ object WheelDatePickerRenderer {
         }
     }
 
+    /** Pulls [date] back inside [minDate, maxDate] when either bound is set. */
+    private fun clampToRange(date: LocalDate, minDate: LocalDate?, maxDate: LocalDate?): LocalDate {
+        var result = date
+        if (minDate != null && result.isBefore(minDate)) result = minDate
+        if (maxDate != null && result.isAfter(maxDate)) result = maxDate
+        return result
+    }
+
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
     private fun WheelCard(
@@ -261,6 +281,9 @@ object WheelDatePickerRenderer {
         selectedDate: LocalDate,
         yearStart: Int,
         yearEnd: Int,
+        minDate: LocalDate?,
+        maxDate: LocalDate?,
+        locale: Locale,
         showFooter: Boolean,
         confirmLabel: String,
         cancelLabel: String,
@@ -279,12 +302,17 @@ object WheelDatePickerRenderer {
         // ever reaches the renderer, but native props can be forged/mocked in tests
         // or by future callers, so never let this list end up empty — an empty
         // years list makes selectedIndex.coerceIn(0, items.lastIndex) throw below.
-        val safeYearStart = minOf(yearStart, yearEnd)
-        val safeYearEnd = maxOf(yearStart, yearEnd)
-        val years = remember(safeYearStart, safeYearEnd) { (safeYearStart..safeYearEnd).toList() }
-        val months = remember {
+        // The PHP element already intersects year_start/year_end with
+        // min-date/max-date, but re-clamp defensively here too since props
+        // can be forged/mocked in tests or by future callers directly.
+        val safeYearStart = maxOf(minOf(yearStart, yearEnd), minDate?.year ?: Int.MIN_VALUE)
+        val safeYearEnd = minOf(maxOf(yearStart, yearEnd), maxDate?.year ?: Int.MAX_VALUE)
+        val years = remember(safeYearStart, safeYearEnd) {
+            if (safeYearStart > safeYearEnd) listOf(selectedDate.year) else (safeYearStart..safeYearEnd).toList()
+        }
+        val months = remember(locale) {
             (1..12).map {
-                LocalDate.of(2000, it, 1).format(DateTimeFormatter.ofPattern("MMM")).uppercase()
+                LocalDate.of(2000, it, 1).format(DateTimeFormatter.ofPattern("MMM", locale)).uppercase(locale)
             }
         }
         val daysInMonth = YearMonth.of(selectedDate.year, selectedDate.monthValue).lengthOfMonth()
@@ -329,7 +357,7 @@ object WheelDatePickerRenderer {
                         .semantics { contentDescription = "Previous month" }
                 )
                 Text(
-                    text = selectedDate.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+                    text = selectedDate.format(DateTimeFormatter.ofPattern("MMMM yyyy", locale)),
                     color = text,
                     fontWeight = FontWeight.Medium,
                     fontSize = 15.sp
@@ -427,7 +455,11 @@ object WheelDatePickerRenderer {
                         fontSize = 14.sp,
                         modifier = Modifier.clickable {
                             onToday()
-                            val today = LocalDate.now()
+                            val today = LocalDate.now().let {
+                                if (minDate != null && it.isBefore(minDate)) minDate
+                                else if (maxDate != null && it.isAfter(maxDate)) maxDate
+                                else it
+                            }
                             scope.launch {
                                 dayListState.scrollToItem((today.dayOfMonth - 1).coerceAtLeast(0))
                                 monthListState.scrollToItem(today.monthValue - 1)
@@ -551,21 +583,25 @@ object WheelDatePickerRenderer {
         return nearest.coerceIn(0, lastIndex)
     }
 
+    // Wire values (the props coming from/going back to PHP) are always
+    // formatted with Locale.US regardless of the display `locale` prop, so
+    // e.g. Arabic-Indic digits from a device locale never leak into the
+    // Y-m-d value PHP expects to parse.
     private fun parseDate(raw: String, pattern: String): LocalDate {
         if (raw.isEmpty()) {
             return LocalDate.now()
         }
 
-        runCatching { LocalDate.parse(raw, DateTimeFormatter.ofPattern(pattern)) }.getOrNull()?.let { return it }
+        runCatching { LocalDate.parse(raw, DateTimeFormatter.ofPattern(pattern, Locale.US)) }.getOrNull()?.let { return it }
         runCatching { LocalDate.parse(raw) }.getOrNull()?.let { return it }
-        runCatching { LocalDate.parse(raw, DateTimeFormatter.ofPattern("dd-MM-yyyy")) }.getOrNull()?.let { return it }
-        runCatching { LocalDate.parse(raw, DateTimeFormatter.ofPattern("dd/MM/yyyy")) }.getOrNull()?.let { return it }
+        runCatching { LocalDate.parse(raw, DateTimeFormatter.ofPattern("dd-MM-yyyy", Locale.US)) }.getOrNull()?.let { return it }
+        runCatching { LocalDate.parse(raw, DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.US)) }.getOrNull()?.let { return it }
 
         return LocalDate.now()
     }
 
     private fun formatDate(date: LocalDate, pattern: String): String =
-        date.format(DateTimeFormatter.ofPattern(pattern))
+        date.format(DateTimeFormatter.ofPattern(pattern, Locale.US))
 
     private fun parseHex(hex: String, fallback: Color): Color {
         if (hex.isEmpty() || !hex.startsWith("#")) {

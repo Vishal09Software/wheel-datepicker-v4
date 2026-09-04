@@ -1,6 +1,6 @@
 <?php
 
-namespace NativeUI\WheelDatePicker;
+namespace Laratribe\WheelDatePicker;
 
 use Illuminate\Support\ServiceProvider;
 

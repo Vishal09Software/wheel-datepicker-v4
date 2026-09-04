@@ -1,6 +1,6 @@
 <?php
 
-namespace NativeUI\WheelDatePicker\Components;
+namespace Laratribe\WheelDatePicker\Components;
 
 use Native\Mobile\Edge\Components\Native\NativeBladeComponent;
 

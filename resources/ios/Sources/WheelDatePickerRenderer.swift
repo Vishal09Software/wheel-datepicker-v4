@@ -26,6 +26,10 @@ struct WheelDatePickerRenderer: View {
         let cancelLabel = props.getString("cancel_label", default: "Cancel")
         let yearStart = props.getInt("year_start", default: 1990)
         let yearEnd = props.getInt("year_end", default: Calendar.current.component(.year, from: Date()) + 20)
+        let minDate = props.getString("min_date").isEmpty ? nil : Self.parse(props.getString("min_date"), pattern: pattern)
+        let maxDate = props.getString("max_date").isEmpty ? nil : Self.parse(props.getString("max_date"), pattern: pattern)
+        let localeTag = props.getString("locale", default: "")
+        let displayLocale = localeTag.isEmpty ? Locale.current : Locale(identifier: localeTag)
         let compact = pickerStyle != "inline"
         let showFooter = props.getBool("show_footer", default: !compact)
         let a11yLabel = props.getString("a11y_label")
@@ -66,7 +70,7 @@ struct WheelDatePickerRenderer: View {
                 }
 
                 Button {
-                    draftDate = Self.parse(committed.isEmpty ? serverValue : committed, pattern: pattern)
+                    draftDate = clampToRange(Self.parse(committed.isEmpty ? serverValue : committed, pattern: pattern), minDate: minDate, maxDate: maxDate)
                     showSheet = true
                 } label: {
                     HStack {
@@ -88,6 +92,9 @@ struct WheelDatePickerRenderer: View {
                     title: title,
                     yearStart: yearStart,
                     yearEnd: yearEnd,
+                    minDate: minDate,
+                    maxDate: maxDate,
+                    locale: displayLocale,
                     showFooter: showFooter,
                     confirmLabel: confirmLabel,
                     cancelLabel: cancelLabel,
@@ -114,6 +121,9 @@ struct WheelDatePickerRenderer: View {
                 title: title,
                 yearStart: yearStart,
                 yearEnd: yearEnd,
+                minDate: minDate,
+                maxDate: maxDate,
+                locale: displayLocale,
                 showFooter: true,
                 confirmLabel: confirmLabel,
                 cancelLabel: cancelLabel,
@@ -129,7 +139,7 @@ struct WheelDatePickerRenderer: View {
                 mutedFont: mutedFont,
                 onCancel: {
                     showSheet = false
-                    draftDate = Self.parse(committed, pattern: pattern)
+                    draftDate = clampToRange(Self.parse(committed, pattern: pattern), minDate: minDate, maxDate: maxDate)
                     if onCancelCb != 0 {
                         NativeElementBridge.sendSelectChangeEvent(onCancelCb, nodeId: node.id, value: committed)
                     }
@@ -153,13 +163,13 @@ struct WheelDatePickerRenderer: View {
             initialized = true
             committed = serverValue
             lastSentValue = serverValue
-            draftDate = Self.parse(serverValue, pattern: pattern)
+            draftDate = clampToRange(Self.parse(serverValue, pattern: pattern), minDate: minDate, maxDate: maxDate)
         }
         .onChange(of: serverValue) { _, newValue in
             if newValue != lastSentValue {
                 committed = newValue
                 lastSentValue = newValue
-                draftDate = Self.parse(newValue, pattern: pattern)
+                draftDate = clampToRange(Self.parse(newValue, pattern: pattern), minDate: minDate, maxDate: maxDate)
             }
         }
         .accessibilityLabel(a11yLabel.isEmpty ? label : a11yLabel)
@@ -172,6 +182,9 @@ struct WheelDatePickerRenderer: View {
         title: String,
         yearStart: Int,
         yearEnd: Int,
+        minDate: Date?,
+        maxDate: Date?,
+        locale: Locale,
         showFooter: Bool,
         confirmLabel: String,
         cancelLabel: String,
@@ -193,8 +206,19 @@ struct WheelDatePickerRenderer: View {
         // ever reaches the renderer, but native props can be forged/mocked (e.g.
         // in tests), so guard against a reversed range producing an inverted or
         // single-year list instead of the intended span.
-        let years = Array(min(yearStart, yearEnd)...max(yearStart, yearEnd))
-        let months = calendar.shortMonthSymbols.map { $0.uppercased() }
+        let minYear = minDate.map { calendar.component(.year, from: $0) }
+        let maxYear = maxDate.map { calendar.component(.year, from: $0) }
+        let safeYearStart = max(min(yearStart, yearEnd), minYear ?? Int.min)
+        let safeYearEnd = min(max(yearStart, yearEnd), maxYear ?? Int.max)
+        // The PHP element already intersects year_start/year_end with
+        // min-date/max-date, but re-clamp defensively here too since props
+        // can be forged/mocked in tests or by future callers directly.
+        let years = safeYearStart <= safeYearEnd
+            ? Array(safeYearStart...safeYearEnd)
+            : [calendar.component(.year, from: draftDate)]
+        var displayCalendar = calendar
+        displayCalendar.locale = locale
+        let months = displayCalendar.shortMonthSymbols.map { $0.uppercased(with: locale) }
         let dayCount = calendar.range(of: .day, in: .month, for: draftDate)?.count ?? 31
 
         VStack(alignment: .leading, spacing: 12) {
@@ -207,7 +231,7 @@ struct WheelDatePickerRenderer: View {
             HStack {
                 Button {
                     if let date = calendar.date(byAdding: .month, value: -1, to: draftDate) {
-                        draftDate = date
+                        draftDate = clampToRange(date, minDate: minDate, maxDate: maxDate)
                     }
                 } label: {
                     Image(systemName: "chevron.left")
@@ -217,7 +241,7 @@ struct WheelDatePickerRenderer: View {
 
                 Spacer()
 
-                Text(Self.monthYearFormatter.string(from: draftDate))
+                Text(Self.monthYearFormatter(locale: locale).string(from: draftDate))
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(dialogText)
 
@@ -225,7 +249,7 @@ struct WheelDatePickerRenderer: View {
 
                 Button {
                     if let date = calendar.date(byAdding: .month, value: 1, to: draftDate) {
-                        draftDate = date
+                        draftDate = clampToRange(date, minDate: minDate, maxDate: maxDate)
                     }
                 } label: {
                     Image(systemName: "chevron.right")
@@ -235,7 +259,7 @@ struct WheelDatePickerRenderer: View {
             }
 
             HStack(spacing: 0) {
-                Picker("Day", selection: dayBinding(calendar: calendar, dayCount: dayCount)) {
+                Picker("Day", selection: dayBinding(calendar: calendar, dayCount: dayCount, minDate: minDate, maxDate: maxDate)) {
                     ForEach(1...dayCount, id: \.self) { day in
                         Text("\(day)")
                             .font(.system(size: calendar.component(.day, from: draftDate) == day ? selectedFont : mutedFont))
@@ -247,7 +271,7 @@ struct WheelDatePickerRenderer: View {
                 .labelsHidden()
                 .id("days-\(dayCount)-\(calendar.component(.month, from: draftDate))-\(calendar.component(.year, from: draftDate))")
 
-                Picker("Month", selection: monthBinding(calendar: calendar)) {
+                Picker("Month", selection: monthBinding(calendar: calendar, minDate: minDate, maxDate: maxDate)) {
                     ForEach(Array(months.enumerated()), id: \.offset) { index, name in
                         Text(name)
                             .font(.system(size: calendar.component(.month, from: draftDate) == index + 1 ? selectedFont : mutedFont))
@@ -258,7 +282,7 @@ struct WheelDatePickerRenderer: View {
                 .pickerStyle(.wheel)
                 .labelsHidden()
 
-                Picker("Year", selection: yearBinding(calendar: calendar)) {
+                Picker("Year", selection: yearBinding(calendar: calendar, minDate: minDate, maxDate: maxDate)) {
                     ForEach(years, id: \.self) { year in
                         Text(String(year))
                             .font(.system(size: calendar.component(.year, from: draftDate) == year ? selectedFont : mutedFont))
@@ -275,7 +299,7 @@ struct WheelDatePickerRenderer: View {
             if showFooter {
                 HStack {
                     Button("Today") {
-                        draftDate = Date()
+                        draftDate = clampToRange(Date(), minDate: minDate, maxDate: maxDate)
                     }
                     .font(.system(size: 14))
                     .foregroundColor(dialogAccent)
@@ -313,20 +337,28 @@ struct WheelDatePickerRenderer: View {
         }
     }
 
-    private func dayBinding(calendar: Calendar, dayCount: Int) -> Binding<Int> {
+    /// Pulls `date` back inside `[minDate, maxDate]` when either bound is set.
+    private func clampToRange(_ date: Date, minDate: Date?, maxDate: Date?) -> Date {
+        var result = date
+        if let minDate, result < minDate { result = minDate }
+        if let maxDate, result > maxDate { result = maxDate }
+        return result
+    }
+
+    private func dayBinding(calendar: Calendar, dayCount: Int, minDate: Date?, maxDate: Date?) -> Binding<Int> {
         Binding(
             get: { min(calendar.component(.day, from: draftDate), dayCount) },
             set: { newDay in
                 var components = calendar.dateComponents([.year, .month, .day], from: draftDate)
                 components.day = min(newDay, dayCount)
                 if let date = calendar.date(from: components) {
-                    draftDate = date
+                    draftDate = clampToRange(date, minDate: minDate, maxDate: maxDate)
                 }
             }
         )
     }
 
-    private func monthBinding(calendar: Calendar) -> Binding<Int> {
+    private func monthBinding(calendar: Calendar, minDate: Date?, maxDate: Date?) -> Binding<Int> {
         Binding(
             get: { calendar.component(.month, from: draftDate) },
             set: { newMonth in
@@ -336,13 +368,13 @@ struct WheelDatePickerRenderer: View {
                 components.month = newMonth
                 components.day = min(components.day ?? 1, maxDay)
                 if let date = calendar.date(from: components) {
-                    draftDate = date
+                    draftDate = clampToRange(date, minDate: minDate, maxDate: maxDate)
                 }
             }
         )
     }
 
-    private func yearBinding(calendar: Calendar) -> Binding<Int> {
+    private func yearBinding(calendar: Calendar, minDate: Date?, maxDate: Date?) -> Binding<Int> {
         Binding(
             get: { calendar.component(.year, from: draftDate) },
             set: { newYear in
@@ -352,7 +384,7 @@ struct WheelDatePickerRenderer: View {
                 components.year = newYear
                 components.day = min(components.day ?? 1, maxDay)
                 if let date = calendar.date(from: components) {
-                    draftDate = date
+                    draftDate = clampToRange(date, minDate: minDate, maxDate: maxDate)
                 }
             }
         )
@@ -370,14 +402,14 @@ struct WheelDatePickerRenderer: View {
         return calendar
     }
 
-    private static let monthYearFormatter: DateFormatter = {
+    private static func monthYearFormatter(locale: Locale) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = calendar
-        formatter.locale = Locale(identifier: "en_US")
+        formatter.locale = locale
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "LLLL yyyy"
+        formatter.setLocalizedDateFormatFromTemplate("LLLL yyyy")
         return formatter
-    }()
+    }
 
     private static func parse(_ raw: String, pattern: String) -> Date {
         if raw.isEmpty {

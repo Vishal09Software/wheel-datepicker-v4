@@ -1,5 +1,5 @@
 {
-    "name": "nativeui/native-wheel-datepicker",
+    "name": "laratribe/native-wheel-datepicker",
     "description": "A wheel date picker EDGE component for NativePHP Mobile v4 (SwiftUI + Jetpack Compose).",
     "type": "nativephp-plugin",
     "license": "MIT",
@@ -17,12 +17,12 @@
     },
     "autoload": {
         "psr-4": {
-            "NativeUI\\WheelDatePicker\\": "src/"
+            "Laratribe\\WheelDatePicker\\": "src/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "NativeUI\\WheelDatePicker\\Tests\\": "tests/"
+            "Laratribe\\WheelDatePicker\\Tests\\": "tests/"
         }
     },
     "require-dev": {
@@ -34,7 +34,7 @@
     "extra": {
         "laravel": {
             "providers": [
-                "NativeUI\\WheelDatePicker\\WheelDatePickerServiceProvider"
+                "Laratribe\\WheelDatePicker\\WheelDatePickerServiceProvider"
             ]
         },
         "nativephp": {
@@ -43,7 +43,5 @@
         "branch-alias": {
             "dev-main": "0.1.x-dev"
         }
-    },
-    "minimum-stability": "dev",
-    "prefer-stable": true
+    }
 }

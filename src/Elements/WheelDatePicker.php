@@ -1,6 +1,6 @@
 <?php
 
-namespace NativeUI\WheelDatePicker\Elements;
+namespace Laratribe\WheelDatePicker\Elements;
 
 use DateTimeImmutable;
 use DateTimeInterface;
@@ -48,6 +48,10 @@ class WheelDatePicker extends Element
     protected ?string $cancelCallback = null;
 
     protected string|DateTimeInterface|null $rawValue = null;
+
+    protected string|DateTimeInterface|null $rawMinDate = null;
+
+    protected string|DateTimeInterface|null $rawMaxDate = null;
 
     public static function make(): static
     {
@@ -97,6 +101,18 @@ class WheelDatePicker extends Element
 
         if (isset($attrs['year-end']) || isset($attrs['yearEnd'])) {
             $this->yearEnd((int) ($attrs['year-end'] ?? $attrs['yearEnd']));
+        }
+
+        if (array_key_exists('min-date', $attrs) || array_key_exists('minDate', $attrs)) {
+            $this->minDate($attrs['min-date'] ?? $attrs['minDate']);
+        }
+
+        if (array_key_exists('max-date', $attrs) || array_key_exists('maxDate', $attrs)) {
+            $this->maxDate($attrs['max-date'] ?? $attrs['maxDate']);
+        }
+
+        if (isset($attrs['locale'])) {
+            $this->locale((string) $attrs['locale']);
         }
 
         if (array_key_exists('show-footer', $attrs) || array_key_exists('showFooter', $attrs)) {
@@ -227,6 +243,41 @@ class WheelDatePicker extends Element
     public function yearEnd(int $year): static
     {
         $this->pickerProps['year_end'] = $year;
+
+        return $this;
+    }
+
+    /**
+     * Earliest selectable date. Unlike `year-start`, this clamps down to the
+     * day, so "18 years ago today" or a fixed cutoff works, not just a year
+     * boundary. Accepts the same formats as `value` — including `'today'`.
+     */
+    public function minDate(string|DateTimeInterface|null $date): static
+    {
+        $this->rawMinDate = $date;
+
+        return $this;
+    }
+
+    /**
+     * Latest selectable date. The common case is capping at today
+     * (`max-date="today"`) so the picker can't be scrolled into the future.
+     */
+    public function maxDate(string|DateTimeInterface|null $date): static
+    {
+        $this->rawMaxDate = $date;
+
+        return $this;
+    }
+
+    /**
+     * BCP-47 tag (e.g. `en`, `fr-FR`, `ja`) used only to localize the month
+     * names shown on the drum. The value committed over the bridge always
+     * stays in `format` (default `Y-m-d`) regardless of locale.
+     */
+    public function locale(string $locale): static
+    {
+        $this->pickerProps['locale'] = $locale;
 
         return $this;
     }
@@ -417,10 +468,55 @@ class WheelDatePicker extends Element
             }
         }
 
-        $normalized = $this->normalize($this->rawValue, $props['format']);
+        // Default is today. Only kicks in when the caller never bound a value
+        // at all — an explicit `value=""` still means "no date, show the
+        // placeholder" and must not be overridden here.
+        $normalized = $this->rawValue === null
+            ? $this->normalize('today', $props['format'])
+            : $this->normalize($this->rawValue, $props['format']);
 
         if ($normalized !== null) {
             $props['value'] = $normalized;
+        }
+
+        $minDate = $this->normalize($this->rawMinDate, $props['format']);
+        $maxDate = $this->normalize($this->rawMaxDate, $props['format']);
+        $minParsed = ($minDate !== null && $minDate !== '')
+            ? DateTimeImmutable::createFromFormat('!'.$props['format'], $minDate, new DateTimeZone('UTC'))
+            : null;
+        $maxParsed = ($maxDate !== null && $maxDate !== '')
+            ? DateTimeImmutable::createFromFormat('!'.$props['format'], $maxDate, new DateTimeZone('UTC'))
+            : null;
+
+        if ($minParsed !== null) {
+            $props['min_date'] = $minDate;
+        }
+
+        if ($maxParsed !== null) {
+            $props['max_date'] = $maxDate;
+        }
+
+        if ($minParsed !== null && $maxParsed !== null && $minParsed > $maxParsed) {
+            throw new InvalidArgumentException(
+                "WheelDatePicker `min-date` [{$minDate}] must not be after `max-date` [{$maxDate}]."
+            );
+        }
+
+        // The year wheel is driven separately by year_start/year_end (a
+        // deliberately coarse UX affordance for jumping decades quickly).
+        // If a full min/max date is also set, narrow the year range to match
+        // so the year wheel can't land on a year the day/month wheels would
+        // then clamp out of — e.g. year-end=2030 with max-date=today.
+        if ($minParsed !== null) {
+            $props['year_start'] = max($props['year_start'], (int) $minParsed->format('Y'));
+        }
+
+        if ($maxParsed !== null) {
+            $props['year_end'] = min($props['year_end'], (int) $maxParsed->format('Y'));
+        }
+
+        if ($props['year_start'] > $props['year_end']) {
+            [$props['year_start'], $props['year_end']] = [$props['year_end'], $props['year_start']];
         }
 
         if ($this->changeCallback !== null) {

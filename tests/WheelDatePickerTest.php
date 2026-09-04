@@ -2,13 +2,16 @@
 
 use Native\Mobile\Edge\TailwindParser;
 use Native\Mobile\Testing\Native;
-use NativeUI\WheelDatePicker\Elements\WheelDatePicker;
-use NativeUI\WheelDatePicker\Tests\Fixtures\AllCallbacksScreen;
-use NativeUI\WheelDatePicker\Tests\Fixtures\ClampedSizeScreen;
-use NativeUI\WheelDatePicker\Tests\Fixtures\FormatAliasScreen;
-use NativeUI\WheelDatePicker\Tests\Fixtures\InvalidPickerStyleScreen;
-use NativeUI\WheelDatePicker\Tests\Fixtures\ReversedYearRangeScreen;
-use NativeUI\WheelDatePicker\Tests\Fixtures\WheelDatePickerScreen;
+use Laratribe\WheelDatePicker\Elements\WheelDatePicker;
+use Laratribe\WheelDatePicker\Tests\Fixtures\AllCallbacksScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\ClampedSizeScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\DefaultTodayScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\FormatAliasScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\InvalidPickerStyleScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\InvertedMinMaxDateScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\MinMaxDateScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\ReversedYearRangeScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\WheelDatePickerScreen;
 
 beforeEach(function () {
     $this->app['view']->addNamespace(
@@ -122,4 +125,36 @@ it('rejects sync modes other than live with a directive-specific message', funct
 
     expect(WheelDatePicker::make()->syncMode('live'))->toBeInstanceOf(WheelDatePicker::class);
 });
+
+it('defaults value to today when no value is bound at all', function () {
+    // Normalization runs in UTC (see WheelDatePicker::normalize()), so assert
+    // against a UTC "today" rather than the app timezone to avoid flakiness
+    // right around midnight in non-UTC test environments.
+    $today = (new DateTimeImmutable('today', new DateTimeZone('UTC')))->format('Y-m-d');
+
+    Native::test(DefaultTodayScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) use ($today) {
+            return $node['props']['value'] === $today;
+        });
+});
+
+it('serializes min-date, max-date, and locale, and narrows year-start/year-end to match', function () {
+    Native::test(MinMaxDateScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            $props = $node['props'];
+
+            return $props['min_date'] === '2000-01-01'
+                && $props['max_date'] === '2026-12-31'
+                && $props['locale'] === 'fr-FR'
+                // year-start/year-end were 1990/2040 but must be pulled in to
+                // match the full-date bounds so the year wheel can't land on
+                // a year the day/month wheels would then clamp out of.
+                && $props['year_start'] === 2000
+                && $props['year_end'] === 2026;
+        });
+});
+
+it('throws when min-date is after max-date', function () {
+    Native::test(InvertedMinMaxDateScreen::class);
+})->throws(InvalidArgumentException::class, 'min-date` [2026-12-31] must not be after `max-date` [2000-01-01]');
 

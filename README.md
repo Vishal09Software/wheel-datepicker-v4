@@ -1,4 +1,4 @@
-# nativeui/native-wheel-datepicker
+# laratribe/native-wheel-datepicker
 
 A wheel date picker **EDGE component** for [NativePHP Mobile v4](https://nativephp.com/docs/mobile/4). It renders as real SwiftUI (`Picker(.wheel)`) on iOS and a snapping Compose wheel on Android — not a web view.
 
@@ -27,9 +27,9 @@ Composer require is not enough. Register the plugin, then rebuild so Kotlin/Swif
 3. Then:
 
 ```bash
-composer require nativeui/native-wheel-datepicker:^0.1
+composer require laratribe/native-wheel-datepicker:^0.1
 php artisan vendor:publish --tag=nativephp-plugins-provider
-php artisan native:plugin:register nativeui/native-wheel-datepicker
+php artisan native:plugin:register laratribe/native-wheel-datepicker
 php artisan native:plugin:validate
 php artisan native:plugin:list
 ```
@@ -49,7 +49,7 @@ PHP-only changes hot-reload. Native renderer changes need `native:run` again. Ma
 After you submit the GitHub repo to [Packagist](https://packagist.org), drop the `repositories` entry and run:
 
 ```bash
-composer require nativeui/native-wheel-datepicker
+composer require laratribe/native-wheel-datepicker
 ```
 
 Then register and rebuild as above.
@@ -59,13 +59,13 @@ Then register and rebuild as above.
 ```json
 {
     "repositories": [
-        { "type": "path", "url": "packages/nativeui/native-wheel-datepicker" }
+        { "type": "path", "url": "packages/laratribe/native-wheel-datepicker" }
     ]
 }
 ```
 
 ```bash
-composer require nativeui/native-wheel-datepicker:@dev
+composer require laratribe/native-wheel-datepicker:@dev
 ```
 
 ## Usage
@@ -98,6 +98,8 @@ class ProfileScreen extends NativeComponent
 
 `native:model` commits when the user taps **Done** (compact) or when you use the footer on inline. Use plain `native:model` or `native:model.live` — `.blur` / `.debounce` are rejected.
 
+Default value is **today** when `value`/`native:model` is left unbound; theme `null` inherits Native UI light tokens, paste a hex or `:colors` to override.
+
 ### Events
 
 - `_change="method"` — wheel settle (optional; `native:model` already syncs).
@@ -114,9 +116,37 @@ Each handler receives a `string $value` in the picker’s `format` (default `Y-m
 
 Defaults: `config('wheel-datepicker.year_start')` (1990) through current year + 20.
 
+### Min / max date
+
+`year-start`/`year-end` only bound the year wheel. To cap the actual selectable
+day — "not after today", "18 years ago or earlier", a booking window, etc. —
+use `min-date` / `max-date` instead. They accept the same formats as `value`,
+including `today`, and are enforced down to the day on both platforms:
+
+```blade
+<native:wheel-date-picker max-date="today" />
+
+<native:wheel-date-picker min-date="{{ now()->subYears(18)->toDateString() }}" max-date="today" />
+```
+
+If `year-start`/`year-end` are also set, they're narrowed to fit inside
+`min-date`/`max-date` automatically so the year wheel can never land on a year
+the day/month wheels would then clamp back out of. `min-date` after `max-date`
+throws.
+
 ### Format
 
 PHP `date()` tokens (`Y-m-d`) or aliases: `YYYY-MM-DD`, `DD-MM-YYYY`, `MM-DD-YYYY`, and `/` or `.` variants.
+
+### Locale
+
+`locale` only changes the month names shown on the drum (`en`, `fr-FR`, `ja`,
+…). The value committed over the bridge always stays in `format` (default
+`Y-m-d`), so parsing on the PHP side never has to account for locale:
+
+```blade
+<native:wheel-date-picker locale="fr-FR" />
+```
 
 ### Colors
 
@@ -166,6 +196,19 @@ This plugin has **no bridge API**. Do not import it from Vue/React. Use the EDGE
 ## Tests
 
 Pest examples live in `tests/` and are meant to run inside a NativePHP Laravel app (`Native::test()`).
+
+Copy-paste starting point for a host app:
+
+```php
+use Native\Mobile\Testing\Native;
+
+it('shows today as the default and commits the picked date', function () {
+    Native::test(ProfileScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            return $node['props']['value'] === now()->format('Y-m-d');
+        });
+});
+```
 
 ## Publish this folder to Git
 
