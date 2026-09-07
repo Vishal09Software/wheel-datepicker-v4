@@ -1,5 +1,6 @@
 {
     "name": "laratribe/native-wheel-datepicker",
+    "version": "1.0.0",
     "description": "A wheel date picker EDGE component for NativePHP Mobile v4 (SwiftUI + Jetpack Compose).",
     "type": "nativephp-plugin",
     "license": "MIT",
