@@ -30,11 +30,11 @@ If the package is not on Packagist yet, add a Composer `vcs` repository pointing
 </code-snippet>
 @endverbatim
 
-Commits on Done. Use `native:model` or `native:model.live` only.
+Commits on Done. Use `native:model` or `native:model.live` only — `.blur`/`.debounce`/`.lazy` throw immediately.
 
-Optional: `year-start`, `year-end`, `min-date`, `max-date`, `locale`, `:colors`, `:row-height`, `:visible-items` (3, 5, or 7), `:size`.
+Optional: `year-start`, `year-end`, `min-date`, `max-date`, `timezone`, `locale`, `default-to-today`, `:colors`, `:row-height`, `:visible-items` (3, 5, or 7), `:size`. Events: `on-change`, `on-done`, `on-cancel`.
 
-`value`/`native:model` defaults to today when left unbound. `min-date`/`max-date` clamp the actual day (e.g. `max-date="today"`), not just the year wheel.
+`value`/`native:model` is **empty** when left unbound (wheels still show today visually; nothing commits until confirmed) — pass `default-to-today` to auto-commit today instead. `min-date`/`max-date` clamp the actual day (e.g. `max-date="today"`, `timezone="Asia/Kolkata"`), not just the year wheel. `format` only supports `Y`/`m`/`d` tokens — anything else throws.
 
 Publish config: `php artisan vendor:publish --tag=wheel-datepicker-config`. Theme keys inherit `config/native-ui.php` when null.
 

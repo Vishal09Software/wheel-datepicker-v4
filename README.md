@@ -2,44 +2,39 @@
 
 A wheel date picker **EDGE component** for [NativePHP Mobile v4](https://nativephp.com/docs/mobile/4). It renders as real SwiftUI (`Picker(.wheel)`) on iOS and a snapping Compose wheel on Android — not a web view.
 
-Requires NativePHP Mobile **v4** and `nativephp/mobile-ui`. Run every command below in your **NativePHP Laravel app**, not in this plugin folder.
+Requires NativePHP Mobile **v4** and `nativephp/mobile-ui`.
 
-## Install and run
+## Install
 
-Composer require is not enough. You must register the plugin, then rebuild so Kotlin and Swift are compiled into the app.
+Composer require is not enough. Register the plugin, then rebuild so Kotlin/Swift are compiled in.
 
-### 1. Require the package
+### From GitHub (before Packagist)
 
-```bash
-composer require laratribe/native-wheel-datepicker
+1. Push this folder as its own Git repository and tag a version (`v0.1.0`).
+2. In the **app** `composer.json`:
+
+```json
+{
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/YOUR_USER/native-wheel-datepicker"
+        }
+    ]
+}
 ```
 
-### 2. Publish NativePHP's plugin provider (once per app)
-
-Creates `app/Providers/NativeServiceProvider.php` if it does not exist. Required before register.
+3. Then:
 
 ```bash
+composer require laratribe/native-wheel-datepicker:^0.1
 php artisan vendor:publish --tag=nativephp-plugins-provider
-```
-
-### 3. Register the plugin
-
-Laravel autoloads the PHP. Native Swift/Kotlin is only compiled after you register — this is a security gate so transitive Composer packages cannot silently ship native code.
-
-```bash
 php artisan native:plugin:register laratribe/native-wheel-datepicker
-```
-
-Confirm it is wired up:
-
-```bash
 php artisan native:plugin:validate
 php artisan native:plugin:list
 ```
 
-You should see `laratribe/native-wheel-datepicker` in the list.
-
-### 4. Rebuild and run the native app
+4. Rebuild the native app (`ios` or `android`):
 
 ```bash
 php artisan native:run ios
@@ -47,21 +42,30 @@ php artisan native:run ios
 php artisan native:run android
 ```
 
-| What changed | What to run |
-| --- | --- |
-| PHP / Blade only | Nothing extra — hot-reloads |
-| Kotlin / Swift renderer | `php artisan native:run ios` or `android` |
-| `nativephp.json` or native file paths | `php artisan native:install --force`, then `native:run` |
+PHP-only changes hot-reload. Native renderer changes need `native:run` again. Manifest/native path changes may need `php artisan native:install --force`.
+
+### From Packagist
+
+After you submit the GitHub repo to [Packagist](https://packagist.org), drop the `repositories` entry and run:
+
+```bash
+composer require laratribe/native-wheel-datepicker
+```
+
+Then register and rebuild as above.
 
 ### Local path (plugin development)
 
-Clone or copy this repo into the app (for example `packages/laratribe/native-wheel-datepicker`), require `@dev`, then register and rebuild as in steps 2–4:
+```json
+{
+    "repositories": [
+        { "type": "path", "url": "packages/laratribe/native-wheel-datepicker" }
+    ]
+}
+```
 
 ```bash
 composer require laratribe/native-wheel-datepicker:@dev
-php artisan vendor:publish --tag=nativephp-plugins-provider
-php artisan native:plugin:register laratribe/native-wheel-datepicker
-php artisan native:run ios
 ```
 
 ## Usage
@@ -92,15 +96,27 @@ class ProfileScreen extends NativeComponent
 }
 ```
 
-`native:model` commits when the user taps **Done** (compact) or when you use the footer on inline. Use plain `native:model` or `native:model.live` — `.blur` / `.debounce` are rejected.
+`native:model` commits when the user taps **Done** (compact) or when you use the footer on inline. Use plain `native:model` or `native:model.live` — `.blur` / `.debounce` are rejected outright (no silent no-op).
 
-Default value is **today** when `value`/`native:model` is left unbound; theme `null` inherits Native UI light tokens, paste a hex or `:colors` to override.
+Value is **empty** (`''`) when `value`/`native:model` is left unbound — the wheels still visually center on today, but nothing is committed until the user confirms, so "not selected" stays distinguishable from a real date. Pass `default-to-today` to opt into committing today automatically instead. Theme `null` inherits Native UI light tokens; paste a hex or `:colors` to override.
 
 ### Events
 
-- `_change="method"` — wheel settle (optional; `native:model` already syncs).
-- `_done="method"` — **Done**.
-- `_cancel="method"` — **Cancel**.
+```blade
+<native:wheel-date-picker
+    on-change="handleChange"
+    on-done="handleDone"
+    on-cancel="handleCancel"
+/>
+```
+
+- `on-change="method"` — wheel settle (optional; `native:model` already syncs).
+- `on-done="method"` — **Done**.
+- `on-cancel="method"` — **Cancel**.
+
+`_change` / `_done` / `_cancel` still work underneath (that's the literal
+attribute name the element receives) but `on-*` is the documented, intended
+spelling — use it in new code.
 
 Each handler receives a `string $value` in the picker’s `format` (default `Y-m-d`).
 
@@ -130,9 +146,23 @@ If `year-start`/`year-end` are also set, they're narrowed to fit inside
 the day/month wheels would then clamp back out of. `min-date` after `max-date`
 throws.
 
+### Timezone
+
+`min-date="today"`, `max-date="today"`, and the native "Today" button all
+resolve "today" from `timezone` (IANA name, e.g. `Asia/Kolkata`) instead of
+PHP's UTC normalization disagreeing with whatever clock the device is set to.
+Defaults to `UTC` on both sides if omitted:
+
+```blade
+<native:wheel-date-picker max-date="today" timezone="Asia/Kolkata" />
+```
+
 ### Format
 
 PHP `date()` tokens (`Y-m-d`) or aliases: `YYYY-MM-DD`, `DD-MM-YYYY`, `MM-DD-YYYY`, and `/` or `.` variants.
+Only `Y`, `m`, `d`, and separators (`-` `/` `.` ` `) are supported — anything
+else (e.g. stray `j`, `n`, `y`) throws immediately in PHP rather than
+reaching the device and parsing incorrectly there.
 
 ### Locale
 
@@ -205,6 +235,23 @@ it('shows today as the default and commits the picked date', function () {
         });
 });
 ```
+
+## Publish this folder to Git
+
+From **this directory** (not the host app):
+
+```bash
+git init
+git add .
+git commit -m "Initial NativePHP wheel date picker plugin"
+git branch -M main
+git remote add origin https://github.com/YOUR_USER/native-wheel-datepicker.git
+git push -u origin main
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Use a Composer package name you own on Packagist. If `nativeui/` is taken, change `"name"` in `composer.json` **before** the first public tag, then `composer require` that name.
 
 ## License
 

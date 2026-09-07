@@ -6,11 +6,15 @@ use Laratribe\WheelDatePicker\Elements\WheelDatePicker;
 use Laratribe\WheelDatePicker\Tests\Fixtures\AllCallbacksScreen;
 use Laratribe\WheelDatePicker\Tests\Fixtures\ClampedSizeScreen;
 use Laratribe\WheelDatePicker\Tests\Fixtures\DefaultTodayScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\DefaultToTodayOptInScreen;
 use Laratribe\WheelDatePicker\Tests\Fixtures\FormatAliasScreen;
 use Laratribe\WheelDatePicker\Tests\Fixtures\InvalidPickerStyleScreen;
 use Laratribe\WheelDatePicker\Tests\Fixtures\InvertedMinMaxDateScreen;
 use Laratribe\WheelDatePicker\Tests\Fixtures\MinMaxDateScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\MissingFormatTokenScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\OnEventAliasScreen;
 use Laratribe\WheelDatePicker\Tests\Fixtures\ReversedYearRangeScreen;
+use Laratribe\WheelDatePicker\Tests\Fixtures\UnsupportedFormatTokenScreen;
 use Laratribe\WheelDatePicker\Tests\Fixtures\WheelDatePickerScreen;
 
 beforeEach(function () {
@@ -126,15 +130,41 @@ it('rejects sync modes other than live with a directive-specific message', funct
     expect(WheelDatePicker::make()->syncMode('live'))->toBeInstanceOf(WheelDatePicker::class);
 });
 
-it('defaults value to today when no value is bound at all', function () {
-    // Normalization runs in UTC (see WheelDatePicker::normalize()), so assert
-    // against a UTC "today" rather than the app timezone to avoid flakiness
-    // right around midnight in non-UTC test environments.
+it('leaves value empty when nothing is bound at all, unless default-to-today is set', function () {
+    Native::test(DefaultTodayScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            return $node['props']['value'] === '' && $node['props']['default_to_today'] === false;
+        });
+});
+
+it('commits today when default-to-today is set and nothing is bound', function () {
+    // Normalization runs in the configured timezone (UTC by default; see
+    // WheelDatePicker::normalize()), so assert against that rather than the
+    // app timezone to avoid flakiness right around midnight.
     $today = (new DateTimeImmutable('today', new DateTimeZone('UTC')))->format('Y-m-d');
 
-    Native::test(DefaultTodayScreen::class)
+    Native::test(DefaultToTodayOptInScreen::class)
         ->assertElement('wheel_date_picker', function ($node) use ($today) {
-            return $node['props']['value'] === $today;
+            return $node['props']['value'] === $today && $node['props']['default_to_today'] === true;
+        });
+});
+
+it('rejects unsupported format tokens before they reach a device', function () {
+    Native::test(UnsupportedFormatTokenScreen::class);
+})->throws(InvalidArgumentException::class, 'unsupported token(s) [n]');
+
+it('rejects a format missing a required Y/m/d token', function () {
+    Native::test(MissingFormatTokenScreen::class);
+})->throws(InvalidArgumentException::class, 'missing required token(s) [Y]');
+
+it('accepts on-change/on-done/on-cancel as the documented alias for _change/_done/_cancel', function () {
+    Native::test(OnEventAliasScreen::class)
+        ->assertElement('wheel_date_picker', function ($node) {
+            $props = $node['props'];
+
+            return is_int($props['on_change'])
+                && is_int($props['on_done'])
+                && is_int($props['on_cancel']);
         });
 });
 

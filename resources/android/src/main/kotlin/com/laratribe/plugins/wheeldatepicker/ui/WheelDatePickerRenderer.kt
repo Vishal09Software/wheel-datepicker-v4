@@ -226,8 +226,21 @@ object WheelDatePickerRenderer {
             }
         }
 
+        // Shared by both the explicit Cancel button and back-press / outside-tap
+        // dismissal, so leaving the sheet either way always discards the draft
+        // and fires on_cancel — previously onDismissRequest only closed the
+        // dialog, leaving draftDate holding the uncommitted in-progress
+        // selection for next time it opened.
+        val resetAndCancel: () -> Unit = {
+            showDialog = false
+            draftDate = clampToRange(parseDate(committed, pattern), minDate, maxDate)
+            if (onCancelCb != 0) {
+                NativeUIBridge.sendSelectChangeEvent(onCancelCb, node.id, committed)
+            }
+        }
+
         if (compact && showDialog) {
-            Dialog(onDismissRequest = { showDialog = false }) {
+            Dialog(onDismissRequest = resetAndCancel) {
                 WheelCard(
                     title = title,
                     selectedDate = draftDate,
@@ -247,13 +260,7 @@ object WheelDatePickerRenderer {
                     accent = dialogAccent,
                     onDateChange = { draftDate = clampToRange(it, minDate, maxDate) },
                     onToday = { draftDate = clampToRange(LocalDate.now(), minDate, maxDate) },
-                    onCancel = {
-                        showDialog = false
-                        draftDate = parseDate(committed, pattern)
-                        if (onCancelCb != 0) {
-                            NativeUIBridge.sendSelectChangeEvent(onCancelCb, node.id, committed)
-                        }
-                    },
+                    onCancel = resetAndCancel,
                     onDone = {
                         showDialog = false
                         emit(onChangeCb, draftDate, force = true)

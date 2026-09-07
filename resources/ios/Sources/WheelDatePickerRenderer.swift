@@ -12,6 +12,7 @@ struct WheelDatePickerRenderer: View {
     @State private var draftDate: Date = Date()
     @State private var showSheet: Bool = false
     @State private var initialized: Bool = false
+    @State private var dismissalHandled: Bool = false
 
     var body: some View {
         let theme = themeStore.resolve(for: colorScheme)
@@ -116,7 +117,20 @@ struct WheelDatePickerRenderer: View {
                 )
             }
         }
-        .sheet(isPresented: $showSheet) {
+        .sheet(isPresented: $showSheet, onDismiss: {
+            // The Done/Cancel buttons already ran their own logic and set
+            // this flag before dismissing programmatically — only swipe-down
+            // / tap-outside dismissal (which skips those closures entirely)
+            // should fall through to the reset-and-cancel below.
+            if dismissalHandled {
+                dismissalHandled = false
+                return
+            }
+            draftDate = clampToRange(Self.parse(committed, pattern: pattern), minDate: minDate, maxDate: maxDate)
+            if onCancelCb != 0 {
+                NativeElementBridge.sendSelectChangeEvent(onCancelCb, nodeId: node.id, value: committed)
+            }
+        }) {
             wheelCard(
                 title: title,
                 yearStart: yearStart,
@@ -138,6 +152,7 @@ struct WheelDatePickerRenderer: View {
                 selectedFont: selectedFont,
                 mutedFont: mutedFont,
                 onCancel: {
+                    dismissalHandled = true
                     showSheet = false
                     draftDate = clampToRange(Self.parse(committed, pattern: pattern), minDate: minDate, maxDate: maxDate)
                     if onCancelCb != 0 {
@@ -145,6 +160,7 @@ struct WheelDatePickerRenderer: View {
                     }
                 },
                 onDone: {
+                    dismissalHandled = true
                     showSheet = false
                     emit(onChangeCb, draftDate, pattern: pattern, force: true)
                     if onDoneCb != 0 {

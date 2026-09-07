@@ -53,6 +53,10 @@ class WheelDatePicker extends Element
 
     protected string|DateTimeInterface|null $rawMaxDate = null;
 
+    protected bool $defaultToToday = false;
+
+    protected ?string $timezone = null;
+
     public static function make(): static
     {
         return new static;
@@ -115,6 +119,14 @@ class WheelDatePicker extends Element
             $this->locale((string) $attrs['locale']);
         }
 
+        if (array_key_exists('default-to-today', $attrs) || array_key_exists('defaultToToday', $attrs)) {
+            $this->defaultToToday(filter_var($attrs['default-to-today'] ?? $attrs['defaultToToday'], FILTER_VALIDATE_BOOL));
+        }
+
+        if (isset($attrs['timezone'])) {
+            $this->timezone((string) $attrs['timezone']);
+        }
+
         if (array_key_exists('show-footer', $attrs) || array_key_exists('showFooter', $attrs)) {
             $this->showFooter(filter_var($attrs['show-footer'] ?? $attrs['showFooter'], FILTER_VALIDATE_BOOL));
         }
@@ -144,16 +156,16 @@ class WheelDatePicker extends Element
             }
         }
 
-        if (isset($attrs['_change'])) {
-            $this->onChange($attrs['_change']);
+        if (isset($attrs['_change']) || isset($attrs['on-change']) || isset($attrs['onChange'])) {
+            $this->onChange($attrs['_change'] ?? $attrs['on-change'] ?? $attrs['onChange']);
         }
 
-        if (isset($attrs['_done'])) {
-            $this->onDone($attrs['_done']);
+        if (isset($attrs['_done']) || isset($attrs['on-done']) || isset($attrs['onDone'])) {
+            $this->onDone($attrs['_done'] ?? $attrs['on-done'] ?? $attrs['onDone']);
         }
 
-        if (isset($attrs['_cancel'])) {
-            $this->onCancel($attrs['_cancel']);
+        if (isset($attrs['_cancel']) || isset($attrs['on-cancel']) || isset($attrs['onCancel'])) {
+            $this->onCancel($attrs['_cancel'] ?? $attrs['on-cancel'] ?? $attrs['onCancel']);
         }
 
         if (isset($attrs['sync-mode']) || isset($attrs['syncMode'])) {
@@ -278,6 +290,32 @@ class WheelDatePicker extends Element
     public function locale(string $locale): static
     {
         $this->pickerProps['locale'] = $locale;
+
+        return $this;
+    }
+
+    /**
+     * Opt in to the old auto-today behavior. By default, an unbound
+     * `value`/`native:model` commits as empty (`''`) so "not selected" stays
+     * distinguishable from a real date — the wheels still visually center on
+     * today, but nothing is committed until the user actually confirms.
+     */
+    public function defaultToToday(bool $default = true): static
+    {
+        $this->defaultToToday = $default;
+
+        return $this;
+    }
+
+    /**
+     * IANA timezone (e.g. `UTC`, `Asia/Kolkata`) used to resolve `today` on
+     * both the PHP and native sides. Defaults to `UTC` on PHP; without this,
+     * native "Today" buttons would use the device's local clock while PHP
+     * normalizes in UTC, which can disagree right around midnight.
+     */
+    public function timezone(string $timezone): static
+    {
+        $this->timezone = $timezone;
 
         return $this;
     }
@@ -468,16 +506,20 @@ class WheelDatePicker extends Element
             }
         }
 
-        // Default is today. Only kicks in when the caller never bound a value
-        // at all — an explicit `value=""` still means "no date, show the
-        // placeholder" and must not be overridden here.
-        $normalized = $this->rawValue === null
-            ? $this->normalize('today', $props['format'])
-            : $this->normalize($this->rawValue, $props['format']);
-
-        if ($normalized !== null) {
-            $props['value'] = $normalized;
+        // Value is left empty when unbound — "no date" must mean an empty
+        // wire value so forms can tell "not selected" from a real date.
+        // Wheels still visually center on today via draftDate on the native
+        // side; that's a display default only, decoupled from what's
+        // actually committed. Callers who want the old auto-today behavior
+        // can opt in with default-to-today.
+        $rawValue = $this->rawValue;
+        if ($rawValue === null && $this->defaultToToday) {
+            $rawValue = 'today';
         }
+        $normalized = $rawValue === null ? null : $this->normalize($rawValue, $props['format']);
+        $props['value'] = $normalized ?? '';
+        $props['default_to_today'] = $this->defaultToToday;
+        $props['timezone'] = $this->timezone ?? 'UTC';
 
         $minDate = $this->normalize($this->rawMinDate, $props['format']);
         $maxDate = $this->normalize($this->rawMaxDate, $props['format']);
@@ -534,6 +576,16 @@ class WheelDatePicker extends Element
         return $props;
     }
 
+    /**
+     * Only these PHP `date()` tokens are translated for native code (see
+     * `nativePattern()`); any other letter passes straight through
+     * `strtr()` untouched and reaches the device as a literal, producing
+     * silently wrong parsing there instead of a clear error here.
+     */
+    private const SUPPORTED_FORMAT_TOKENS = ['Y', 'm', 'd'];
+
+    private const SUPPORTED_FORMAT_SEPARATORS = ['-', '/', '.', ' '];
+
     private function phpFormat(string $format): string
     {
         $trimmed = trim($format);
@@ -542,7 +594,58 @@ class WheelDatePicker extends Element
             return 'Y-m-d';
         }
 
-        return self::FORMAT_ALIASES[strtoupper($trimmed)] ?? $trimmed;
+        $resolved = self::FORMAT_ALIASES[strtoupper($trimmed)] ?? $trimmed;
+
+        $this->assertSupportedFormat($resolved);
+
+        return $resolved;
+    }
+
+    /**
+     * Reject unsupported format tokens here, before they ever reach a
+     * device — a format that fails silently on-device (wrong month/day
+     * order, or a stray letter left un-translated) is far harder to debug
+     * than an immediate, explicit PHP exception.
+     */
+    private function assertSupportedFormat(string $format): void
+    {
+        $seen = [];
+        $invalid = [];
+
+        foreach (str_split($format) as $char) {
+            if (in_array($char, self::SUPPORTED_FORMAT_SEPARATORS, true)) {
+                continue;
+            }
+
+            if (in_array($char, self::SUPPORTED_FORMAT_TOKENS, true)) {
+                $seen[$char] = true;
+
+                continue;
+            }
+
+            $invalid[$char] = true;
+        }
+
+        if ($invalid !== []) {
+            $bad = implode('', array_keys($invalid));
+
+            throw new InvalidArgumentException(
+                "WheelDatePicker `format` [{$format}] uses unsupported token(s) [{$bad}]. "
+                .'Only `Y`, `m`, `d`, and separators (`-`, `/`, `.`, ` `) are supported — '
+                .'use one of the documented aliases (e.g. `YYYY-MM-DD`) or a raw pattern built only from those tokens.'
+            );
+        }
+
+        $missing = array_diff(self::SUPPORTED_FORMAT_TOKENS, array_keys($seen));
+
+        if ($missing !== []) {
+            $missingList = implode(', ', $missing);
+
+            throw new InvalidArgumentException(
+                "WheelDatePicker `format` [{$format}] is missing required token(s) [{$missingList}]. "
+                .'A format must include `Y`, `m`, and `d` exactly once each.'
+            );
+        }
     }
 
     private function nativePattern(string $phpFormat): string
@@ -579,7 +682,13 @@ class WheelDatePicker extends Element
         }
 
         try {
-            return (new DateTimeImmutable($trimmed, new DateTimeZone('UTC')))->format($phpFormat);
+            // Only the relative-date fallback ("today", "tomorrow", "+1 week")
+            // is timezone-sensitive; explicit date strings parsed above are
+            // unambiguous regardless of zone. Use the configured timezone
+            // (default UTC) so this agrees with native "Today" buttons that
+            // also respect the `timezone` prop, instead of silently drifting
+            // from the device's local clock around midnight.
+            return (new DateTimeImmutable($trimmed, new DateTimeZone($this->timezone ?? 'UTC')))->format($phpFormat);
         } catch (Exception) {
             throw new InvalidArgumentException(
                 "WheelDatePicker `value` expects a date matching [{$phpFormat}], got [{$trimmed}]."
