@@ -509,25 +509,26 @@ object WheelDatePickerRenderer {
         onSettled: (Int) -> Unit
     ) {
         val paddingItems = size.visibleItems / 2
-        // True only while a programmatic scrollToItem is in flight.
-        // Unlike the old boolean ignoreSettle flag (which was briefly set
-        // to true whenever the LaunchedEffect re-launched -- even when no
-        // scroll actually happened), this flag is only raised around the
-        // actual suspend call, eliminating the race window that swallowed
-        // legitimate user-scroll settle events when scrolling back to a
-        // previously selected value.
-        var programmaticScrolling by remember { mutableStateOf(false) }
+        // Starts TRUE to suppress the spurious settle event that fires on
+        // first composition (snapshotFlow emits isScrollInProgress=false
+        // before the initial programmatic scroll has run).  Set to FALSE
+        // at the end of every LaunchedEffect run.  Only re-set to TRUE
+        // inside the if-branch that actually calls scrollToItem, so
+        // user-initiated scroll settles are never accidentally suppressed
+        // (which was the bug with the old blanket ignoreSettle=true).
+        var programmaticScrolling by remember { mutableStateOf(true) }
 
         LaunchedEffect(selectedIndex, items.size) {
             if (items.isEmpty()) {
+                programmaticScrolling = false
                 return@LaunchedEffect
             }
             val target = selectedIndex.coerceIn(0, items.lastIndex)
             if (centeredIndex(listState, items.lastIndex) != target) {
                 programmaticScrolling = true
                 listState.scrollToItem(target)
-                programmaticScrolling = false
             }
+            programmaticScrolling = false
         }
 
         LaunchedEffect(listState, items.size) {

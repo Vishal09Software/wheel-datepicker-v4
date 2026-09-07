@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.3
+
+- **Fix (Android):** Fixed initialization race in `WheelColumn` introduced
+  in v1.0.2 — `programmaticScrolling` must start as `true` (not `false`)
+  to suppress the spurious settle event that fires on first composition
+  before the initial programmatic scroll has run. Also moved the
+  `programmaticScrolling = false` cleanup to the end of the
+  `LaunchedEffect` block (unconditionally) so it clears even when no
+  scroll was needed.
+
 ## 1.0.2
 
 - **Fix (Android):** Scrolling the year wheel back to a previously selected
