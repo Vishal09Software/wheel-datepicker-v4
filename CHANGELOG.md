@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.2
+
+- **Fix (Android):** Scrolling the year wheel back to a previously selected
+  year (e.g. 2027 → 2026) now correctly highlights and selects the value.
+  The root cause was a race condition in `WheelColumn`'s settle detection:
+  the `ignoreSettle` boolean was briefly set to `true` whenever the
+  programmatic-scroll `LaunchedEffect` relaunched — even when no scroll was
+  needed — which could swallow the legitimate user-scroll settle event.
+  Replaced with a `programmaticScrolling` flag that is only raised during an
+  actual `scrollToItem` call.
+
 ## 1.0.1
 
 - **Documentation:** Clarified `on-done` usage to handle confirmation when
