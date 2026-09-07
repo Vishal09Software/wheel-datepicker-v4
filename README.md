@@ -99,7 +99,7 @@ Value is **empty** (`''`) when `value`/`native:model` is left unbound — the wh
 ```
 
 - `on-change="method"` — wheel settle (optional; `native:model` already syncs).
-- `on-done="method"` — **Done**.
+- `on-done="method"` — **Done** (fires unconditionally on confirmation).
 - `on-cancel="method"` — **Cancel**.
 
 `_change` / `_done` / `_cancel` still work underneath (that's the literal
@@ -107,6 +107,24 @@ attribute name the element receives) but `on-*` is the documented, intended
 spelling — use it in new code.
 
 Each handler receives a `string $value` in the picker’s `format` (default `Y-m-d`).
+
+> **Note on reverting to the initial date:**
+> If a user opens the wheel, scrolls to another year/date, and then scrolls back to the initial date (e.g. `2026`), `native:model` / `on-change` treats it as unchanged (`newValue === oldValue`) and will not fire. Use `on-done="handleDone"` whenever you need logic, validation, or state updates to run on every confirmation, even if the value is unchanged:
+>
+> ```blade
+> <native:wheel-date-picker
+>     :value="$birthday"
+>     on-done="handleDateConfirmed"
+> />
+> ```
+>
+> ```php
+> public function handleDateConfirmed(string $date): void
+> {
+>     $this->birthday = $date;
+>     // Runs reliably on every Done tap
+> }
+> ```
 
 ### Year range
 
