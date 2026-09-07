@@ -8,33 +8,16 @@ Requires NativePHP Mobile **v4** and `nativephp/mobile-ui`.
 
 Composer require is not enough. Register the plugin, then rebuild so Kotlin/Swift are compiled in.
 
-### From GitHub (before Packagist)
-
-1. Push this folder as its own Git repository and tag a version (`v0.1.0`).
-2. In the **app** `composer.json`:
-
-```json
-{
-    "repositories": [
-        {
-            "type": "vcs",
-            "url": "https://github.com/YOUR_USER/native-wheel-datepicker"
-        }
-    ]
-}
-```
-
-3. Then:
-
 ```bash
-composer require laratribe/native-wheel-datepicker:^0.1
+composer require laratribe/native-wheel-datepicker
+php artisan vendor:publish --tag=wheel-datepicker-config
 php artisan vendor:publish --tag=nativephp-plugins-provider
 php artisan native:plugin:register laratribe/native-wheel-datepicker
 php artisan native:plugin:validate
 php artisan native:plugin:list
 ```
 
-4. Rebuild the native app (`ios` or `android`):
+Rebuild the native app (`ios` or `android`):
 
 ```bash
 php artisan native:run ios
@@ -43,16 +26,6 @@ php artisan native:run android
 ```
 
 PHP-only changes hot-reload. Native renderer changes need `native:run` again. Manifest/native path changes may need `php artisan native:install --force`.
-
-### From Packagist
-
-After you submit the GitHub repo to [Packagist](https://packagist.org), drop the `repositories` entry and run:
-
-```bash
-composer require laratribe/native-wheel-datepicker
-```
-
-Then register and rebuild as above.
 
 ### Local path (plugin development)
 
@@ -66,7 +39,22 @@ Then register and rebuild as above.
 
 ```bash
 composer require laratribe/native-wheel-datepicker:@dev
+php artisan vendor:publish --tag=wheel-datepicker-config
+php artisan vendor:publish --tag=nativephp-plugins-provider
+php artisan native:plugin:register laratribe/native-wheel-datepicker
+php artisan native:plugin:validate
+php artisan native:plugin:list
 ```
+
+## Configuration
+
+Publish the configuration file (optional, to customize defaults):
+
+```bash
+php artisan vendor:publish --tag=wheel-datepicker-config
+```
+
+This creates `config/wheel-datepicker.php`. Leave `theme` keys `null` to inherit Native UI light tokens (`surface`, `outline`, `primary`, …). Set hex values only to override.
 
 ## Usage
 
@@ -207,14 +195,6 @@ Values are density-independent (`dp` / `pt`). They do **not** auto-grow on table
 
 `class="w-full"` only stretches the **trigger field**.
 
-## Config
-
-```bash
-php artisan vendor:publish --tag=wheel-datepicker-config
-```
-
-Leave `theme` keys `null` to inherit Native UI. Set hex values only to override.
-
 ## JavaScript / web view
 
 This plugin has **no bridge API**. Do not import it from Vue/React. Use the EDGE tag in a `NativeComponent`.
@@ -235,23 +215,6 @@ it('shows today as the default and commits the picked date', function () {
         });
 });
 ```
-
-## Publish this folder to Git
-
-From **this directory** (not the host app):
-
-```bash
-git init
-git add .
-git commit -m "Initial NativePHP wheel date picker plugin"
-git branch -M main
-git remote add origin https://github.com/YOUR_USER/native-wheel-datepicker.git
-git push -u origin main
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Use a Composer package name you own on Packagist. If `nativeui/` is taken, change `"name"` in `composer.json` **before** the first public tag, then `composer require` that name.
 
 ## License
 
