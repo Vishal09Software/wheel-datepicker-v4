@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 1.0.1
+
+- **Documentation:** Clarified `on-done` usage to handle confirmation when
+  reverting to the initial date (e.g. `2026`), where `on-change`/`native:model`
+  drops the event due to no value delta (`newValue === oldValue`).
 
 - **Behavior change:** `value`/`native:model` now defaults to **empty**
   (`''`) when left entirely unbound, not "today" — "not selected" needs to
